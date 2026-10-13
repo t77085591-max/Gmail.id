@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A1230">
+<title>Gmail.id Rewards</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--bg:#0A1230;--panel:#101B45;--line:#1F3280;--neon:#22A8FF;--text:#E8EEFF;--mut:#8FA0D6;--ok:#2EE6A6;--warn:#FFC857;--bad:#FF5D7A}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 Sora,system-ui,sans-serif}
+header{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top)) 16px 12px;background:var(--bg);border-bottom:1px solid var(--line);z-index:2}
+header span,h1 span{color:var(--neon);text-shadow:0 0 14px var(--neon)}
+main{max-width:560px;margin:0 auto;padding:16px 16px calc(88px + env(safe-area-inset-bottom))}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;padding:14px 4px;background:none;border:0;color:var(--mut);font:inherit}
+nav button.on{color:var(--neon);box-shadow:inset 0 2px var(--neon)}
+h1{font-size:26px;margin:0 0 4px}h2{font-size:16px;margin:24px 0 8px}
+.hero{background:linear-gradient(135deg,#12307A,#0E1D52);border:1px solid var(--neon);border-radius:18px;padding:20px;box-shadow:0 0 28px #22A8FF33}
+.hero strong{display:block;font-size:34px;margin:4px 0}
+.stat{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.stat b{display:block;font-size:20px}
+small,.mut{color:var(--mut);font-size:12.5px}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+li.col{flex-direction:column}li .r{display:flex;gap:8px;width:100%;justify-content:space-between;align-items:flex-start}
+.b{padding:2px 10px;border-radius:99px;font-size:12px;border:1px solid;white-space:nowrap}
+.b.ok{color:var(--ok)}.b.warn{color:var(--warn)}.b.bad{color:var(--bad)}.pos{color:var(--ok)}.neg{color:var(--bad)}
+input,select,button{font:inherit;color:var(--text)}
+input,select{width:100%;padding:13px;margin:0 0 10px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--neon);outline-offset:1px}
+button.pri{width:100%;padding:13px;border:0;border-radius:10px;background:var(--neon);color:#04112E;font-weight:700}
+li button.pri{width:auto;flex:1}button.bad{flex:1;padding:13px;border:1px solid var(--bad);border-radius:10px;background:none;color:var(--bad)}
+button:disabled{opacity:.5}button.ghost,button.link{background:none;border:0;color:var(--neon);padding:6px}
+.auth{max-width:380px;margin:0 auto;padding:12vh 20px 20px}.err{color:var(--bad)}.note{color:var(--mut);font-size:12.5px;margin-top:16px}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(80px + env(safe-area-inset-bottom));max-width:520px;margin:auto;padding:12px 16px;border-radius:10px;background:var(--panel);border:1px solid var(--neon);opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.show{opacity:1}#toast.bad{border-color:var(--bad)}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head>
+<body><div id="app"></div><div id="toast" role="status"></div>
+<script>
+// Isi dari Supabase > Project Settings > API (anon key memang publik; keamanan ada di RLS).
+const SUPABASE_URL='ISI_URL_PROYEK', SUPABASE_ANON_KEY='ISI_ANON_KEY';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const $=s=>document.querySelector(s), view=h=>{$('#app').innerHTML=h};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rp=n=>'Rp'+Number(n).toLocaleString('id-ID'), dt=s=>new Date(s).toLocaleString('id-ID');
+const ST={pending:['Menunggu','warn'],approved:['Disetujui','ok'],rejected:['Ditolak','bad']};
+const badge=s=>`<span class="b ${ST[s][1]}">${ST[s][0]}</span>`;
+const isAdmin=()=>location.hash==='#admin';
+let me=null, tab='home';
+function toast(m,bad){const t=$('#toast');t.textContent=m;t.className='show'+(bad?' bad':'');setTimeout(()=>t.className='',3500)}
+const shell=(inner,tabs,adm)=>`<header><b>Gmail<span>.id</span> Rewards${adm?' Admin':''}</b><button class="ghost" data-a="out">Keluar</button></header><main>${inner}</main><nav>${tabs.map(([k,l])=>`<button data-tab="${k}" class="${tab===k?'on':''}">${l}</button>`).join('')}</nav>`;
+
+function renderAuth(msg,mode='in'){
+  const adm=isAdmin(), up=mode==='up'&&!adm;
+  view(`<section class="auth"><h1>Gmail<span>.id</span> Rewards</h1><p class="mut">${adm?'Masuk khusus admin':'Kelola setoran dan penarikan saldo Anda'}</p>
+  <form id="af">${up?'<input name="name" placeholder="Nama lengkap" required maxlength="80" autocomplete="name">':''}
+  <input name="email" type="email" placeholder="Email" required autocomplete="email">
+  <input name="pw" type="password" placeholder="Kata sandi (minimal 10 karakter)" required minlength="10" autocomplete="${up?'new-password':'current-password'}">
+  <button class="pri">${up?'Daftar':'Masuk'}</button></form>
+  ${msg?`<p class="err">${esc(msg)}</p>`:''}
+  ${adm?'':`<button class="link" data-a="mode" data-m="${up?'in':'up'}">${up?'Sudah punya akun? Masuk':'Belum punya akun? Daftar'}</button>`}
+  <p class="note">Kami tidak pernah meminta kata sandi Gmail, PIN, atau OTP pembayaran Anda.</p></section>`);
+  $('#af').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),email=f.get('email'),password=f.get('pw');
+    const r=up?await sb.auth.signUp({email,password,options:{data:{full_name:f.get('name')}}}):await sb.auth.signInWithPassword({email,password});
+    if(r.error)return renderAuth(r.error.message,mode);
+    if(up&&!r.data.session)return renderAuth('Periksa email Anda untuk konfirmasi, lalu masuk.','in');
+    load()};
+}
+
+async function load(){
+  const {data:{session}}=await sb.auth.getSession();
+  if(!session)return renderAuth();
+  const {data:p}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
+  me=p; tab=isAdmin()?'adep':'home';
+  if(isAdmin()){ // pemeriksaan UI saja; izin sebenarnya dicek di server (RLS + fungsi)
+    if(p?.role!=='admin'){await sb.auth.signOut();return renderAuth('Akun ini tidak memiliki akses admin.')}
+    return renderAdmin();
+  }
+  renderUser();
+}
+
+async function renderUser(){
+  const q=(t,n)=>sb.from(t).select('*').order('created_at',{ascending:false}).limit(n);
+  const [d,w,t,p]=await Promise.all([q('deposits',50),q('withdrawals',50),q('transactions',30),sb.from('profiles').select('*').eq('id',me.id).single()]);
+  me=p.data; const dep=d.data||[],wd=w.data||[],tx=t.data||[];
+  const total=dep.filter(x=>x.status==='approved').reduce((s,x)=>s+x.amount,0);
+  const row=(x,f)=>`<li><div><b>${rp(x.amount)}</b><br><small>${esc(x.method)}, ${esc(x[f])}<br>${dt(x.created_at)}${x.reject_reason?'<br>Alasan: '+esc(x.reject_reason):''}</small></div>${badge(x.status)}</li>`;
+  const KIND={deposit:'Setoran disetujui',withdrawal:'Penarikan diajukan',withdrawal_refund:'Penarikan dikembalikan'};
+  const empty='<li class="mut">Belum ada data.</li>'; let body='';
+  if(tab==='home')body=`<div class="hero"><small>Saldo</small><strong>${rp(me.balance)}</strong><small>Halo, ${esc(me.full_name||'Pengguna')}</small></div>
+    <div class="stat"><small>Total setoran disetujui</small><b>${rp(total)}</b></div>
+    <h2>Riwayat transaksi</h2><ul>${tx.map(x=>`<li><div><b>${KIND[x.kind]}</b><br><small>${dt(x.created_at)}</small></div><b class="${x.amount<0?'neg':'pos'}">${x.amount<0?'-':'+'}${rp(Math.abs(x.amount))}</b></li>`).join('')||empty}</ul>`;
+  if(tab==='dep')body=`<h2>Ajukan setoran</h2><form id="df"><input name="amount" type="number" inputmode="numeric" min="10000" max="50000000" step="1" placeholder="Nominal (Rp)" required>
+    <select name="method"><option>Transfer Bank</option><option>QRIS</option><option>E-Wallet</option></select>
+    <input name="ref" placeholder="Nomor referensi pembayaran" required minlength="4" maxlength="40"><button class="pri">Kirim pengajuan</button></form>
+    <p class="note">Saldo bertambah hanya setelah admin memverifikasi pembayaran Anda.</p><h2>Status setoran</h2><ul>${dep.map(x=>row(x,'reference')).join('')||empty}</ul>`;
+  if(tab==='wd')body=`<h2>Tarik saldo</h2><p class="mut">Saldo tersedia ${rp(me.balance)}</p><form id="wf"><input name="amount" type="number" inputmode="numeric" min="20000" step="1" placeholder="Nominal (Rp)" required>
+    <select name="method"><option>Transfer Bank</option><option>E-Wallet</option></select>
+    <input name="acc" placeholder="Rekening atau nomor e-wallet tujuan" required minlength="4" maxlength="40"><button class="pri">Ajukan penarikan</button></form>
+    <h2>Status penarikan</h2><ul>${wd.map(x=>row(x,'account')).join('')||empty}</ul>`;
+  view(shell(body,[['home','Beranda'],['dep','Setoran'],['wd','Penarikan']]));
+  const bind=(id,fn,args,ok)=>{const f=$(id);if(!f)return;f.onsubmit=async e=>{e.preventDefault();const b=f.querySelector('button');b.disabled=true;
+    const {error}=await sb.rpc(fn,args(new FormData(f)));if(error){b.disabled=false;return toast(error.message,1)}toast(ok);renderUser()}};
+  bind('#df','submit_deposit',f=>({p_amount:Math.trunc(+f.get('amount')),p_method:f.get('method'),p_reference:f.get('ref')}),'Pengajuan terkirim, menunggu verifikasi.');
+  bind('#wf','request_withdrawal',f=>({p_amount:Math.trunc(+f.get('amount')),p_method:f.get('method'),p_account:f.get('acc')}),'Permintaan penarikan terkirim.');
+}
+
+async function renderAdmin(){
+  const q=(t,n,s)=>sb.from(t).select(s||'*').order('created_at',{ascending:false}).limit(n);
+  const [d,w,l]=await Promise.all([q('deposits',100,'*,profiles!deposits_user_id_fkey(full_name)'),q('withdrawals',100,'*,profiles!withdrawals_user_id_fkey(full_name)'),q('audit_log',60)]);
+  const pf=(a=[])=>[...a].sort((x,y)=>(y.status==='pending')-(x.status==='pending'));
+  const item=(x,k,f)=>`<li class="col"><div class="r"><div><b>${rp(x.amount)}</b><br><small>${esc(x.profiles?.full_name||'-')}<br>${esc(x.method)}, ${esc(x[f])}<br>${dt(x.created_at)}${x.reject_reason?'<br>Alasan: '+esc(x.reject_reason):''}</small></div>${badge(x.status)}</div>
+    ${x.status==='pending'?`<div class="r"><button class="pri" data-rv="${k}:${x.id}:1">Setujui</button><button class="bad" data-rv="${k}:${x.id}:0">Tolak</button></div>`:''}</li>`;
+  const empty='<li class="mut">Belum ada data.</li>'; let body='';
+  if(tab==='adep')body=`<h2>Permintaan setoran</h2><p class="note">Setujui hanya setelah pembayaran terverifikasi di rekening Anda.</p><ul>${pf(d.data).map(x=>item(x,'d','reference')).join('')||empty}</ul>`;
+  if(tab==='awd')body=`<h2>Permintaan penarikan</h2><ul>${pf(w.data).map(x=>item(x,'w','account')).join('')||empty}</ul>`;
+  if(tab==='alog')body=`<h2>Riwayat tindakan</h2><ul>${(l.data||[]).map(x=>`<li><div><b>${esc(x.action)}</b><br><small>Aktor ${esc(String(x.actor_id).slice(0,8))}, ${esc(JSON.stringify(x.detail||{}))}</small></div><small>${dt(x.created_at)}</small></li>`).join('')||empty}</ul>`;
+  view(shell(body,[['adep','Setoran'],['awd','Penarikan'],['alog','Log']],true));
+}
+
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.tab){tab=b.dataset.tab;return isAdmin()?renderAdmin():renderUser()}
+  if(b.dataset.a==='out'){await sb.auth.signOut();return renderAuth()}
+  if(b.dataset.a==='mode')return renderAuth('',b.dataset.m);
+  if(b.dataset.rv){
+    const [k,id,ok]=b.dataset.rv.split(':');let reason=null;
+    if(ok==='0'){reason=prompt('Alasan penolakan (wajib):');if(!reason)return}
+    b.disabled=true;
+    const {error}=await sb.rpc(k==='d'?'review_deposit':'review_withdrawal',{p_id:id,p_approve:ok==='1',p_reason:reason});
+    error?toast(error.message,1):toast(ok==='1'?'Disetujui':'Ditolak');renderAdmin();
+  }
+});
+addEventListener('hashchange',load);load();
+</script></body></html>
